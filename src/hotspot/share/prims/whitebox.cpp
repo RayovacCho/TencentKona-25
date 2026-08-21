@@ -102,6 +102,7 @@
 #include "utilities/macros.hpp"
 #include "utilities/nativeCallStack.hpp"
 #include "utilities/ostream.hpp"
+#include "utilities/vmError.hpp"
 #if INCLUDE_G1GC
 #include "gc/g1/g1Arguments.hpp"
 #include "gc/g1/g1CollectedHeap.inline.hpp"
@@ -1561,6 +1562,12 @@ WB_ENTRY(void, WB_ReadReservedMemory(JNIEnv* env, jobject o))
   c = *p;
 WB_END
 
+#ifdef ASSERT
+WB_ENTRY(void, WB_ControlledCrash(JNIEnv* env, jobject o, jint how))
+  VMError::controlled_crash(how);
+WB_END
+#endif
+
 WB_ENTRY(jstring, WB_GetCPUFeatures(JNIEnv* env, jobject o))
   const char* features = VM_Version::cpu_info_string();
   ThreadToNativeFromVM ttn(thread);
@@ -2936,6 +2943,9 @@ static JNINativeMethod methods[] = {
   {CC"fullGC",   CC"()V",                             (void*)&WB_FullGC },
   {CC"youngGC",  CC"()V",                             (void*)&WB_YoungGC },
   {CC"readReservedMemory", CC"()V",                   (void*)&WB_ReadReservedMemory },
+#ifdef ASSERT
+  {CC"controlledCrash", CC"(I)V",                    (void*)&WB_ControlledCrash },
+#endif
   {CC"allocateMetaspace",
      CC"(Ljava/lang/ClassLoader;J)J",                 (void*)&WB_AllocateMetaspace },
   {CC"incMetaspaceCapacityUntilGC", CC"(J)J",         (void*)&WB_IncMetaspaceCapacityUntilGC },
