@@ -531,8 +531,8 @@ public class WhiteBox {
   public native void readReservedMemory();
 
   /**
-   * Terminates an ASSERT-enabled VM through VMError::controlled_crash.
-   * This testing API is only registered by fastdebug and slowdebug builds.
+   * 通过 VMError::controlled_crash 终止启用了 ASSERT 的虚拟机。
+   * 仅 fastdebug 和 slowdebug 构建会注册此测试 API。
    */
   public native void controlledCrash(int how);
   public native long allocateMetaspace(ClassLoader classLoader, long size);
