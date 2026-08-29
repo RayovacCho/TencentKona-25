@@ -36,10 +36,46 @@ import java.io.Serializable;
 
 public class FieldValuesBuffer {
     public static void main(String[] args) throws Exception {
+        testFieldSnapshot();
+        testDeepGraph();
+    }
+
+    private static void testFieldSnapshot() throws Exception {
         Holder value = new Holder();
         value.first = new Mutator(value);
         value.second = "before";
 
+        Holder restored = (Holder) roundTrip(value);
+
+        if (!"after".equals(value.second)) {
+            throw new RuntimeException("nested writeObject was not invoked");
+        }
+        if (!"before".equals(restored.second)) {
+            throw new RuntimeException(
+                    "object fields were not captured before recursive serialization: "
+                    + restored.second);
+        }
+    }
+
+    private static void testDeepGraph() throws Exception {
+        Node root = null;
+        for (int i = 99; i >= 0; i--) {
+            root = new Node("node-" + i, root);
+        }
+
+        Node restored = (Node) roundTrip(root);
+        for (int i = 0; i < 100; i++) {
+            if (restored == null || !("node-" + i).equals(restored.name)) {
+                throw new RuntimeException("deep graph mismatch at index " + i);
+            }
+            restored = restored.next;
+        }
+        if (restored != null) {
+            throw new RuntimeException("deep graph contains unexpected trailing nodes");
+        }
+    }
+
+    private static Object roundTrip(Object value) throws Exception {
         byte[] bytes;
         try (ByteArrayOutputStream buffer = new ByteArrayOutputStream();
              ObjectOutputStream output = new ObjectOutputStream(buffer)) {
@@ -47,20 +83,9 @@ public class FieldValuesBuffer {
             bytes = buffer.toByteArray();
         }
 
-        if (!"after".equals(value.second)) {
-            throw new RuntimeException("nested writeObject was not invoked");
-        }
-
-        Holder restored;
         try (ObjectInputStream input = new ObjectInputStream(
                 new ByteArrayInputStream(bytes))) {
-            restored = (Holder) input.readObject();
-        }
-
-        if (!"before".equals(restored.second)) {
-            throw new RuntimeException(
-                    "object fields were not captured before recursive serialization: "
-                    + restored.second);
+            return input.readObject();
         }
     }
 
@@ -83,6 +108,18 @@ public class FieldValuesBuffer {
         private void writeObject(ObjectOutputStream output) throws IOException {
             owner.second = "after";
             output.defaultWriteObject();
+        }
+    }
+
+    private static final class Node implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        private final String name;
+        private final Node next;
+
+        private Node(String name, Node next) {
+            this.name = name;
+            this.next = next;
         }
     }
 }

@@ -187,8 +187,10 @@ public class ObjectOutputStream
 
     /** buffer for writing primitive field values */
     private byte[] primVals;
-    /** buffers for writing object field values, indexed by recursion depth */
-    private Object[][] objFieldVals;
+    /** buffer for writing root object field values */
+    private Object[] objFieldVals;
+    /** buffers for writing nested object field values, indexed by recursion depth */
+    private Object[][] nestedObjFieldVals;
 
     /** if true, invoke writeObjectOverride() instead of writeObject() */
     private final boolean enableOverride;
@@ -1440,17 +1442,27 @@ public class ObjectOutputStream
         if (numObjFields > 0) {
             ObjectStreamField[] fields = desc.getFields(false);
             int depthIndex = depth - 1;
-            if (objFieldVals == null) {
-                objFieldVals = new Object[depthIndex + 1][];
-            } else if (depthIndex >= objFieldVals.length) {
-                objFieldVals = Arrays.copyOf(
-                        objFieldVals,
-                        Math.max(depthIndex + 1, objFieldVals.length * 2));
+            Object[] objVals;
+            if (depthIndex == 0) {
+                objVals = objFieldVals;
+            } else {
+                int nestedIndex = depthIndex - 1;
+                if (nestedObjFieldVals == null) {
+                    nestedObjFieldVals = new Object[Math.max(4, nestedIndex + 1)][];
+                } else if (nestedIndex >= nestedObjFieldVals.length) {
+                    nestedObjFieldVals = Arrays.copyOf(
+                            nestedObjFieldVals,
+                            Math.max(nestedIndex + 1, nestedObjFieldVals.length * 2));
+                }
+                objVals = nestedObjFieldVals[nestedIndex];
             }
-            Object[] objVals = objFieldVals[depthIndex];
             if (objVals == null || objVals.length < numObjFields) {
                 objVals = new Object[numObjFields];
-                objFieldVals[depthIndex] = objVals;
+                if (depthIndex == 0) {
+                    objFieldVals = objVals;
+                } else {
+                    nestedObjFieldVals[depthIndex - 1] = objVals;
+                }
             }
             int numPrimFields = fields.length - numObjFields;
             int fieldIndex = 0;
