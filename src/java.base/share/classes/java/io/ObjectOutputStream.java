@@ -187,6 +187,8 @@ public class ObjectOutputStream
 
     /** buffer for writing primitive field values */
     private byte[] primVals;
+    /** buffers for writing object field values, indexed by recursion depth */
+    private Object[][] objFieldVals;
 
     /** if true, invoke writeObjectOverride() instead of writeObject() */
     private final boolean enableOverride;
@@ -1437,24 +1439,42 @@ public class ObjectOutputStream
         int numObjFields = desc.getNumObjFields();
         if (numObjFields > 0) {
             ObjectStreamField[] fields = desc.getFields(false);
-            Object[] objVals = new Object[numObjFields];
-            int numPrimFields = fields.length - objVals.length;
-            desc.getObjFieldValues(obj, objVals);
-            for (int i = 0; i < objVals.length; i++) {
-                if (extendedDebugInfo) {
-                    debugInfoStack.push(
-                        "field (class \"" + desc.getName() + "\", name: \"" +
-                        fields[numPrimFields + i].getName() + "\", type: \"" +
-                        fields[numPrimFields + i].getType() + "\")");
-                }
-                try {
-                    writeObject0(objVals[i],
-                                 fields[numPrimFields + i].isUnshared());
-                } finally {
+            int depthIndex = depth - 1;
+            if (objFieldVals == null) {
+                objFieldVals = new Object[depthIndex + 1][];
+            } else if (depthIndex >= objFieldVals.length) {
+                objFieldVals = Arrays.copyOf(
+                        objFieldVals,
+                        Math.max(depthIndex + 1, objFieldVals.length * 2));
+            }
+            Object[] objVals = objFieldVals[depthIndex];
+            if (objVals == null || objVals.length < numObjFields) {
+                objVals = new Object[numObjFields];
+                objFieldVals[depthIndex] = objVals;
+            }
+            int numPrimFields = fields.length - numObjFields;
+            int fieldIndex = 0;
+            try {
+                desc.getObjFieldValues(obj, objVals);
+                for (; fieldIndex < numObjFields; fieldIndex++) {
+                    ObjectStreamField field = fields[numPrimFields + fieldIndex];
                     if (extendedDebugInfo) {
-                        debugInfoStack.pop();
+                        debugInfoStack.push(
+                            "field (class \"" + desc.getName() + "\", name: \"" +
+                            field.getName() + "\", type: \"" + field.getType() + "\")");
+                    }
+                    try {
+                        Object value = objVals[fieldIndex];
+                        objVals[fieldIndex] = null;
+                        writeObject0(value, field.isUnshared());
+                    } finally {
+                        if (extendedDebugInfo) {
+                            debugInfoStack.pop();
+                        }
                     }
                 }
+            } finally {
+                Arrays.fill(objVals, fieldIndex, numObjFields, null);
             }
         }
     }
