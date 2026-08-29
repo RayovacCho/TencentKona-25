@@ -187,8 +187,8 @@ public class ObjectOutputStream
 
     /** buffer for writing primitive field values */
     private byte[] primVals;
-    /** root object field buffer, or nested object field buffer state */
-    private Object objFieldVals;
+    /** buffers for writing nested object field values, indexed by recursion depth */
+    private Object[][] nestedObjFieldVals;
 
     /** if true, invoke writeObjectOverride() instead of writeObject() */
     private final boolean enableOverride;
@@ -1440,36 +1440,22 @@ public class ObjectOutputStream
         if (numObjFields > 0) {
             ObjectStreamField[] fields = desc.getFields(false);
             int depthIndex = depth - 1;
-            FieldValuesBuffers buffers = (objFieldVals instanceof FieldValuesBuffers)
-                    ? (FieldValuesBuffers) objFieldVals : null;
             Object[] objVals;
             if (depthIndex == 0) {
-                objVals = (buffers != null) ? buffers.root : (Object[]) objFieldVals;
+                objVals = new Object[numObjFields];
             } else {
                 int nestedIndex = depthIndex - 1;
-                if (buffers == null) {
-                    buffers = new FieldValuesBuffers((Object[]) objFieldVals);
-                    objFieldVals = buffers;
+                if (nestedObjFieldVals == null) {
+                    nestedObjFieldVals = new Object[Math.max(4, nestedIndex + 1)][];
+                } else if (nestedIndex >= nestedObjFieldVals.length) {
+                    nestedObjFieldVals = Arrays.copyOf(
+                            nestedObjFieldVals,
+                            Math.max(nestedIndex + 1, nestedObjFieldVals.length * 2));
                 }
-                if (buffers.nested == null) {
-                    buffers.nested = new Object[Math.max(4, nestedIndex + 1)][];
-                } else if (nestedIndex >= buffers.nested.length) {
-                    buffers.nested = Arrays.copyOf(
-                            buffers.nested,
-                            Math.max(nestedIndex + 1, buffers.nested.length * 2));
-                }
-                objVals = buffers.nested[nestedIndex];
-            }
-            if (objVals == null || objVals.length < numObjFields) {
-                objVals = new Object[numObjFields];
-                if (depthIndex == 0) {
-                    if (buffers == null) {
-                        objFieldVals = objVals;
-                    } else {
-                        buffers.root = objVals;
-                    }
-                } else {
-                    buffers.nested[depthIndex - 1] = objVals;
+                objVals = nestedObjFieldVals[nestedIndex];
+                if (objVals == null || objVals.length < numObjFields) {
+                    objVals = new Object[numObjFields];
+                    nestedObjFieldVals[nestedIndex] = objVals;
                 }
             }
             int numPrimFields = fields.length - numObjFields;
@@ -1493,19 +1479,10 @@ public class ObjectOutputStream
                         }
                     }
                 }
-            } finally {
+            } catch (IOException | RuntimeException | Error ex) {
                 Arrays.fill(objVals, fieldIndex, numObjFields, null);
+                throw ex;
             }
-        }
-    }
-
-    /** Reusable object field buffers for recursive serialization. */
-    private static final class FieldValuesBuffers {
-        Object[] root;
-        Object[][] nested;
-
-        FieldValuesBuffers(Object[] root) {
-            this.root = root;
         }
     }
 
