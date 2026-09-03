@@ -1089,6 +1089,12 @@ public class ObjectOutputStream
             }
         } finally {
             depth--;
+            if (depth == 0) {
+                // The buffers only need to be reused by siblings in the current
+                // object graph.  Do not retain the largest graph ever written
+                // for the lifetime of a long-lived ObjectOutputStream.
+                nestedObjFieldVals = null;
+            }
             bout.setBlockDataMode(oldMode);
         }
     }

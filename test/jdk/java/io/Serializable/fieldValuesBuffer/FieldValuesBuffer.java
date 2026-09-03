@@ -24,6 +24,7 @@
 /*
  * @test
  * @summary Verify recursive serialization preserves the object field snapshot
+ * @modules java.base/java.io:open
  * @run main FieldValuesBuffer
  */
 
@@ -33,11 +34,13 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.lang.reflect.Field;
 
 public class FieldValuesBuffer {
     public static void main(String[] args) throws Exception {
         testFieldSnapshot();
         testDeepGraph();
+        testNestedBuffersAreReleased();
     }
 
     private static void testFieldSnapshot() throws Exception {
@@ -58,10 +61,7 @@ public class FieldValuesBuffer {
     }
 
     private static void testDeepGraph() throws Exception {
-        Node root = null;
-        for (int i = 99; i >= 0; i--) {
-            root = new Node("node-" + i, root);
-        }
+        Node root = createDeepGraph();
 
         Node restored = (Node) roundTrip(root);
         for (int i = 0; i < 100; i++) {
@@ -73,6 +73,28 @@ public class FieldValuesBuffer {
         if (restored != null) {
             throw new RuntimeException("deep graph contains unexpected trailing nodes");
         }
+    }
+
+    private static void testNestedBuffersAreReleased() throws Exception {
+        Field buffers = ObjectOutputStream.class.getDeclaredField("nestedObjFieldVals");
+        buffers.setAccessible(true);
+
+        try (ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+             ObjectOutputStream output = new ObjectOutputStream(bytes)) {
+            output.writeObject(createDeepGraph());
+            if (buffers.get(output) != null) {
+                throw new RuntimeException(
+                        "nested field buffers retained after top-level serialization");
+            }
+        }
+    }
+
+    private static Node createDeepGraph() {
+        Node root = null;
+        for (int i = 99; i >= 0; i--) {
+            root = new Node("node-" + i, root);
+        }
+        return root;
     }
 
     private static Object roundTrip(Object value) throws Exception {
